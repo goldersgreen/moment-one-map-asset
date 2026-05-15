@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Moment One Map</title>
+  <style>
+    html, body { margin:0; padding:0; height:100%; overflow:hidden; }
+    #map { width:100%; height:100%; }
+    .diag {
+      padding:18px; font-family:-apple-system,sans-serif; height:100%;
+      box-sizing:border-box; background:#FFF5F0; color:#0F2236; overflow-y:auto;
+    }
+    .diag h3 { color:#E55A26; margin:0 0 10px; }
+    .diag .item { margin:6px 0; font-size:12px; line-height:1.5; }
+    .diag .ok { color:#27AE60; } .diag .err { color:#E74C3C; }
+    .diag code { background:#fff; padding:1px 4px; border-radius:3px; font-size:11px; }
+    .diag .hint { margin-top:14px; padding:10px; background:#fff; border-radius:8px;
+                  font-size:11px; color:#6B7280; line-height:1.6; }
+  </style>
+  <script>
+    // URL 쿼리 파라미터에서 키와 초기 좌표 읽기
+    // 예: ?key=ABC&lat=37.5665&lng=126.978&level=3&interactive=true
+    var params = new URLSearchParams(window.location.search);
+    var KAKAO_KEY    = params.get('key') || '';
+    var CENTER_LAT   = parseFloat(params.get('lat')) || 37.5665;
+    var CENTER_LNG   = parseFloat(params.get('lng')) || 126.978;
+    var INIT_LEVEL   = parseInt(params.get('level')) || 3;
+    var INTERACTIVE  = params.get('interactive') !== 'false';
+
+    // 진단 정보
+    window._diag = {
+      keyPreview: KAKAO_KEY.length >= 4
+        ? KAKAO_KEY.substring(0,4) + '...' + KAKAO_KEY.substring(KAKAO_KEY.length-2)
+        : '(짧음)',
+      origin: window.location.origin || '(null)',
+      href: window.location.href,
+      sdkScriptError: null,
+      consoleErrors: []
+    };
+    var _origErr = console.error;
+    console.error = function() {
+      window._diag.consoleErrors.push(Array.from(arguments).join(' '));
+      _origErr.apply(console, arguments);
+    };
+
+    function showDiag() {
+      var d = window._diag;
+      var html = '<div class="diag"><h3>⚠ 카카오맵 SDK 로드 실패</h3>';
+      html += '<div class="item"><b>키 prefix:</b> <code>' + d.keyPreview + '</code></div>';
+      html += '<div class="item"><b>실제 origin:</b> <code>' + d.origin + '</code></div>';
+      html += '<div class="item"><b>실제 href:</b> <code>' + d.href + '</code></div>';
+      html += '<div class="item"><b>SDK 스크립트:</b> ' +
+        (d.sdkScriptError ? '<span class="err">' + d.sdkScriptError + '</span>' :
+         '<span class="ok">200 OK</span>') + '</div>';
+      html += '<div class="item"><b>kakao 객체:</b> ' +
+        (typeof kakao !== 'undefined' ?
+          '<span class="ok">정의됨</span>' :
+          '<span class="err">undefined</span>') + '</div>';
+      if (d.consoleErrors.length > 0) {
+        html += '<div class="item"><b>JS 콘솔 에러:</b><br>';
+        d.consoleErrors.forEach(function(e) {
+          html += '<code style="display:block;margin-top:3px;color:#E74C3C">' + e + '</code>';
+        });
+        html += '</div>';
+      }
+      html += '<div class="hint">';
+      html += '<b>확인:</b><br>';
+      html += '1. 카카오 디벨로퍼스 → JS 키 → JavaScript SDK 도메인에<br>';
+      html += '&nbsp;&nbsp;&nbsp;&nbsp;<code>' + d.origin + '</code> 등록 후 저장<br>';
+      html += '2. JS 키 prefix가 카카오 디벨로퍼스의 값과 일치하는지';
+      html += '</div></div>';
+      document.body.innerHTML = html;
+    }
+  </script>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    var map, currentMarker, routeLine;
+    var markers = [];
+    var pending = { location: null, polyline: null, markers: null };
+
+    function _applyLocation(lat, lng, follow) {
+      if (!map) return;
+      var pos = new kakao.maps.LatLng(lat, lng);
+      if (!currentMarker) {
+        var content = '<div style="width:18px;height:18px;background:#FF6B35;' +
+                      'border:3px solid white;border-radius:50%;' +
+                      'box-shadow:0 0 0 2px rgba(255,107,53,.3),0 2px 6px rgba(0,0,0,.3);"></div>';
+        currentMarker = new kakao.maps.CustomOverlay({
+          position: pos, content: content, yAnchor: 0.5, xAnchor: 0.5
+        });
+        currentMarker.setMap(map);
+      } else {
+        currentMarker.setPosition(pos);
+      }
+      if (follow) map.setCenter(pos);
+    }
+
+    function _applyPolyline(coords) {
+      if (!map) return;
+      if (routeLine) routeLine.setMap(null);
+      if (coords.length < 2) return;
+      var path = coords.map(function(c) { return new kakao.maps.LatLng(c.lat, c.lng); });
+      routeLine = new kakao.maps.Polyline({
+        path: path,
+        strokeWeight: 5,
+        strokeColor: '#FF6B35',
+        strokeOpacity: 0.85,
+        strokeStyle: 'solid'
+      });
+      routeLine.setMap(map);
+    }
+
+    function _applyMarkers(data) {
+      if (!map) return;
+      markers.forEach(function(m) { m.setMap(null); });
+      markers = [];
+      data.forEach(function(m) {
+        var marker = new kakao.maps.Marker({
+          position: new kakao.maps.LatLng(m.lat, m.lng),
+          title: m.title
+        });
+        marker.setMap(map);
+        markers.push(marker);
+      });
+    }
+
+    // Flutter 에서 호출하는 함수들 (map 없으면 큐에 보관)
+    window.setCurrentLocation = function(lat, lng, follow) {
+      if (!map) { pending.location = {lat:lat, lng:lng, follow:follow}; return; }
+      _applyLocation(lat, lng, follow);
+    };
+
+    window.setPolyline = function(coordsJson) {
+      var coords = JSON.parse(coordsJson);
+      if (!map) { pending.polyline = coords; return; }
+      _applyPolyline(coords);
+    };
+
+    window.setMarkers = function(markersJson) {
+      var data = JSON.parse(markersJson);
+      if (!map) { pending.markers = data; return; }
+      _applyMarkers(data);
+    };
+
+    window.panTo = function(lat, lng) {
+      if (!map) return;
+      map.panTo(new kakao.maps.LatLng(lat, lng));
+    };
+
+    function bootMap() {
+      var container = document.getElementById('map');
+      var options = {
+        center: new kakao.maps.LatLng(CENTER_LAT, CENTER_LNG),
+        level: INIT_LEVEL,
+        draggable: INTERACTIVE,
+        scrollwheel: INTERACTIVE
+      };
+      map = new kakao.maps.Map(container, options);
+      if (pending.location) _applyLocation(pending.location.lat, pending.location.lng, pending.location.follow);
+      if (pending.polyline) _applyPolyline(pending.polyline);
+      if (pending.markers)  _applyMarkers(pending.markers);
+    }
+
+    // 카카오 SDK 동적 로드 (URL 파라미터로 받은 키 사용)
+    var sdkScript = document.createElement('script');
+    sdkScript.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + KAKAO_KEY + '&autoload=false';
+    sdkScript.onerror = function() {
+      window._diag.sdkScriptError = 'script onerror (네트워크/도메인 차단)';
+      showDiag();
+    };
+    sdkScript.onload = function() {
+      setTimeout(function() {
+        if (typeof kakao !== 'undefined' && kakao.maps && kakao.maps.load) {
+          kakao.maps.load(bootMap);
+        } else {
+          showDiag();
+        }
+      }, 100);
+    };
+    document.head.appendChild(sdkScript);
+  </script>
+</body>
+</html>
