@@ -79,6 +79,7 @@
   <script>
     var map, currentMarker, routeLine;
     var markers = [];
+    var openInfo = null; // 현재 열린 인포윈도우 (다른 마커 클릭 시 닫기용)
     var pending = { location: null, polyline: null, markers: null };
 
     function _applyLocation(lat, lng, follow) {
@@ -115,14 +116,30 @@
 
     function _applyMarkers(data) {
       if (!map) return;
+      // 기존 마커/인포윈도우 정리
       markers.forEach(function(m) { m.setMap(null); });
       markers = [];
+      if (openInfo) { openInfo.close(); openInfo = null; }
+
       data.forEach(function(m) {
         var marker = new kakao.maps.Marker({
           position: new kakao.maps.LatLng(m.lat, m.lng),
           title: m.title
         });
         marker.setMap(map);
+
+        // 클릭 시 매장 이름이 뜨는 인포윈도우
+        var safeTitle = String(m.title || '매장').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        var iw = new kakao.maps.InfoWindow({
+          content: '<div style="padding:6px 10px;font-size:12px;font-weight:700;color:#0F2236;white-space:nowrap;">' +
+                   safeTitle + '</div>',
+          removable: true
+        });
+        kakao.maps.event.addListener(marker, 'click', function() {
+          if (openInfo && openInfo !== iw) openInfo.close();
+          iw.open(map, marker);
+          openInfo = iw;
+        });
         markers.push(marker);
       });
     }
