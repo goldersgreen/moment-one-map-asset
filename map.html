@@ -167,6 +167,19 @@
       map.panTo(new kakao.maps.LatLng(lat, lng));
     };
 
+    // 현재 polyline 전체가 화면에 들어오도록 줌·중심 자동 조정 (긴 산책 경로 표시용)
+    window.fitToPolyline = function() {
+      if (!map || !routeLine) return;
+      var path = routeLine.getPath();
+      if (!path || path.length < 2) return;
+      var bounds = new kakao.maps.LatLngBounds();
+      for (var i = 0; i < path.length; i++) {
+        bounds.extend(path[i]);
+      }
+      // padding(px): 경로 끝점이 화면 가장자리에 딱 붙지 않도록 여백
+      map.setBounds(bounds, 30, 30, 30, 30);
+    };
+
     function bootMap() {
       var container = document.getElementById('map');
       var options = {
