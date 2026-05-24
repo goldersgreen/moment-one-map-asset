@@ -17,6 +17,46 @@
     .diag code { background:#fff; padding:1px 4px; border-radius:3px; font-size:11px; }
     .diag .hint { margin-top:14px; padding:10px; background:#fff; border-radius:8px;
                   font-size:11px; color:#6B7280; line-height:1.6; }
+
+    /* 매장 마커 (CustomOverlay) — 카테고리별 색/아이콘 + 매장명 라벨 */
+    .mo-marker {
+      display: flex; flex-direction: column; align-items: center;
+      cursor: pointer; user-select: none;
+      font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      transform: translateY(-2px);
+    }
+    .mo-pin {
+      width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 16px; line-height: 1;
+      border: 2px solid #fff;
+      box-shadow: 0 2px 4px rgba(0,0,0,.25);
+    }
+    .mo-label {
+      margin-top: 3px;
+      padding: 2px 7px;
+      max-width: 110px;
+      background: #fff;
+      border-radius: 10px;
+      font-size: 11px; font-weight: 700; color: #0F2236;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      box-shadow: 0 1px 3px rgba(0,0,0,.15);
+    }
+    /* 카테고리별 색상 (Place 모델의 PlaceCategory.name 매칭) */
+    .mo-cat-cafe       { background: #8B5A2B; }
+    .mo-cat-grooming   { background: #FF6B35; }
+    .mo-cat-hotel      { background: #7A6CD9; }
+    .mo-cat-daycare    { background: #F5A623; }
+    .mo-cat-hospital   { background: #4DA6FF; }
+    .mo-cat-training   { background: #4DC07A; }
+    .mo-cat-shop       { background: #E36B9D; }
+    .mo-cat-restaurant { background: #E07A2E; }
+    .mo-cat-park       { background: #5BAD3F; }
+    .mo-cat-default    { background: #6B7280; }
+    /* 파트너 매장 강조 (향후 partner 플래그 전달 시) */
+    .mo-marker.partner .mo-pin {
+      border-color: #FFD700; border-width: 3px;
+    }
   </style>
   <script>
     // URL 쿼리 파라미터에서 키와 초기 좌표 읽기
@@ -114,33 +154,47 @@
       routeLine.setMap(map);
     }
 
+    // 카테고리별 아이콘 (이모지 — 환경에 따라 fallback)
+    var CATEGORY_ICON = {
+      cafe: '☕', grooming: '✂', hotel: '🏨', daycare: '🎒',
+      hospital: '+', training: '🎓', shop: '🛍', restaurant: '🍽',
+      park: '🌳'
+    };
+    function _escapeHtml(s) {
+      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
     function _applyMarkers(data) {
       if (!map) return;
-      // 기존 마커/인포윈도우 정리
-      markers.forEach(function(m) { m.setMap(null); });
+      // 기존 마커(CustomOverlay) 정리
+      markers.forEach(function(m) {
+        if (m && m.setMap) m.setMap(null);
+      });
       markers = [];
       if (openInfo) { openInfo.close(); openInfo = null; }
 
       data.forEach(function(m) {
-        var marker = new kakao.maps.Marker({
-          position: new kakao.maps.LatLng(m.lat, m.lng),
-          title: m.title
-        });
-        marker.setMap(map);
+        var cat = String(m.category || 'default').toLowerCase();
+        var icon = CATEGORY_ICON[cat] || '🐾';
+        var safeTitle = _escapeHtml(m.title || '매장');
 
-        // 클릭 시 매장 이름이 뜨는 인포윈도우
-        var safeTitle = String(m.title || '매장').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        var iw = new kakao.maps.InfoWindow({
-          content: '<div style="padding:6px 10px;font-size:12px;font-weight:700;color:#0F2236;white-space:nowrap;">' +
-                   safeTitle + '</div>',
-          removable: true
+        var content =
+          '<div class="mo-marker mo-cat-wrap" data-id="' + _escapeHtml(m.id || '') + '">' +
+            '<div class="mo-pin mo-cat-' + cat + '">' + icon + '</div>' +
+            '<div class="mo-label">' + safeTitle + '</div>' +
+          '</div>';
+
+        var overlay = new kakao.maps.CustomOverlay({
+          position: new kakao.maps.LatLng(m.lat, m.lng),
+          content: content,
+          // yAnchor=1.0: 핀 아래 끝(라벨 포함)이 좌표에 닿게.
+          //              핀이 위에, 라벨이 아래로 떨어지는 형태
+          yAnchor: 1.0,
+          xAnchor: 0.5,
+          zIndex: 5
         });
-        kakao.maps.event.addListener(marker, 'click', function() {
-          if (openInfo && openInfo !== iw) openInfo.close();
-          iw.open(map, marker);
-          openInfo = iw;
-        });
-        markers.push(marker);
+        overlay.setMap(map);
+        markers.push(overlay);
       });
     }
 
