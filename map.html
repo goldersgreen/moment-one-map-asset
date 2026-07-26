@@ -53,6 +53,12 @@
     .mo-cat-restaurant { background: #E07A2E; }
     .mo-cat-park       { background: #5BAD3F; }
     .mo-cat-default    { background: #6B7280; }
+    /* 산책 시작/종료 — 작은 발바닥 배지(시작 틸 / 종료 주황), 라벨 없음 */
+    .mo-pin.mo-cat-start,
+    .mo-pin.mo-cat-end { width: 22px; height: 22px; border-width: 2px;
+                         box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+    .mo-cat-start      { background: #2BB6A3; font-size: 12px; }
+    .mo-cat-end        { background: #FF6B35; font-size: 8px; letter-spacing: -1px; }
     /* 파트너 매장 강조 (향후 partner 플래그 전달 시) */
     .mo-marker.partner .mo-pin {
       border-color: #FFD700; border-width: 3px;
@@ -120,7 +126,7 @@
     var map, currentMarker, routeLine;
     var markers = [];
     var openInfo = null; // 현재 열린 인포윈도우 (다른 마커 클릭 시 닫기용)
-    var pending = { location: null, polyline: null, markers: null };
+    var pending = { location: null, polyline: null, markers: null, fit: false };
 
     function _applyLocation(lat, lng, follow) {
       if (!map) return;
@@ -152,13 +158,17 @@
         strokeStyle: 'solid'
       });
       routeLine.setMap(map);
+      // 화면 맞춤이 미리 요청됐으면(지도 준비 전 fitToPolyline 호출) 지금 적용
+      if (pending.fit) { pending.fit = false; _doFit(); }
     }
 
     // 카테고리별 아이콘 (이모지 — 환경에 따라 fallback)
     var CATEGORY_ICON = {
       cafe: '☕', grooming: '✂', hotel: '🏨', daycare: '🎒',
       hospital: '🏥', training: '🎓', shop: '🛍', restaurant: '🍽',
-      park: '🌳'
+      park: '🌳',
+      // 산책 시작/종료 — 발바닥 1개(시작)/2개(종료)
+      start: '🐾', end: '🐾🐾'
     };
     function _escapeHtml(s) {
       return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -177,19 +187,21 @@
         var cat = String(m.category || 'default').toLowerCase();
         var icon = CATEGORY_ICON[cat] || '🐾';
         var safeTitle = _escapeHtml(m.title || '매장');
+        // 산책 시작/종료는 라벨 없이 발바닥 배지만(색·발바닥 개수로 구분)
+        var isWalk = (cat === 'start' || cat === 'end');
+        var labelHtml = isWalk ? '' : '<div class="mo-label">' + safeTitle + '</div>';
 
         var content =
           '<div class="mo-marker mo-cat-wrap" data-id="' + _escapeHtml(m.id || '') + '">' +
             '<div class="mo-pin mo-cat-' + cat + '">' + icon + '</div>' +
-            '<div class="mo-label">' + safeTitle + '</div>' +
+            labelHtml +
           '</div>';
 
         var overlay = new kakao.maps.CustomOverlay({
           position: new kakao.maps.LatLng(m.lat, m.lng),
           content: content,
-          // yAnchor=1.0: 핀 아래 끝(라벨 포함)이 좌표에 닿게.
-          //              핀이 위에, 라벨이 아래로 떨어지는 형태
-          yAnchor: 1.0,
+          // 매장: yAnchor=1.0 (핀 아래 끝=좌표, 라벨 아래로). 산책 배지: 0.5(점 정중앙).
+          yAnchor: isWalk ? 0.5 : 1.0,
           xAnchor: 0.5,
           zIndex: 5
         });
@@ -222,7 +234,7 @@
     };
 
     // 현재 polyline 전체가 화면에 들어오도록 줌·중심 자동 조정 (긴 산책 경로 표시용)
-    window.fitToPolyline = function() {
+    function _doFit() {
       if (!map || !routeLine) return;
       var path = routeLine.getPath();
       if (!path || path.length < 2) return;
@@ -232,6 +244,12 @@
       }
       // padding(px): 경로 끝점이 화면 가장자리에 딱 붙지 않도록 여백
       map.setBounds(bounds, 30, 30, 30, 30);
+    }
+    window.fitToPolyline = function() {
+      // 지도(또는 경로)가 아직 준비 안 됐으면 큐잉 → 준비되면 _applyPolyline 이 적용.
+      // (카카오맵은 onLoadStop 이후 비동기 생성 — 이 큐잉이 없으면 긴 경로 시작점이 잘림)
+      if (map && routeLine) { _doFit(); pending.fit = false; }
+      else { pending.fit = true; }
     };
 
     function bootMap() {
