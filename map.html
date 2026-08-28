@@ -59,6 +59,17 @@
                          box-shadow: 0 1px 4px rgba(0,0,0,.3); }
     .mo-cat-start      { background: #2BB6A3; font-size: 12px; }
     .mo-cat-end        { background: #FF6B35; font-size: 8px; letter-spacing: -1px; }
+
+    /* 산책 사진 핀 — 앱의 kWalkPhotoKindHex 와 색이 같아야 한다(양쪽 따로 적음) */
+    .mo-pin.mo-cat-wp_marking,
+    .mo-pin.mo-cat-wp_poop,
+    .mo-pin.mo-cat-wp_cute,
+    .mo-pin.mo-cat-wp_etc { width: 26px; height: 26px; border-width: 2px;
+                            font-size: 13px; cursor: pointer; }
+    .mo-cat-wp_marking { background: #3B82C4; }
+    .mo-cat-wp_poop    { background: #A0703C; }
+    .mo-cat-wp_cute    { background: #E0568F; }
+    .mo-cat-wp_etc     { background: #7A8794; }
     /* 파트너 매장 강조 (향후 partner 플래그 전달 시) */
     .mo-marker.partner .mo-pin {
       border-color: #FFD700; border-width: 3px;
@@ -172,8 +183,20 @@
       hospital: '🏥', training: '🎓', shop: '🛍', restaurant: '🍽',
       park: '🌳',
       // 산책 시작/종료 — 발바닥 1개(시작)/2개(종료)
-      start: '🐾', end: '🐾🐾'
+      start: '🐾', end: '🐾🐾',
+      // 산책 중 사진 핀 (마킹·배변·이쁜 짓·기타)
+      wp_marking: '💧', wp_poop: '🌿', wp_cute: '💗', wp_etc: '···'
     };
+
+    /* 핀을 누르면 앱으로 알린다. 지도는 폰 안의 사진 파일을 읽지 못하므로
+       사진은 앱이 띄운다 — 여기서는 어느 핀인지만 넘긴다. */
+    function _pinTap(id) {
+      try {
+        if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
+          window.flutter_inappwebview.callHandler('onMarkerTap', id);
+        }
+      } catch (e) {}
+    }
     function _escapeHtml(s) {
       return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
@@ -192,11 +215,18 @@
         var icon = CATEGORY_ICON[cat] || '🐾';
         var safeTitle = _escapeHtml(m.title || '매장');
         // 산책 시작/종료는 라벨 없이 발바닥 배지만(색·발바닥 개수로 구분)
-        var isWalk = (cat === 'start' || cat === 'end');
+        var isPhoto = cat.indexOf('wp_') === 0;
+        var isWalk = (cat === 'start' || cat === 'end' || isPhoto);
         var labelHtml = isWalk ? '' : '<div class="mo-label">' + safeTitle + '</div>';
 
+        var safeId = _escapeHtml(m.id || '');
+        // 사진 핀만 탭을 받는다(매장·시작·종료 마커 동작은 그대로)
+        var tapAttr = isPhoto
+          ? ' onclick="_pinTap(&quot;' + safeId + '&quot;)"'
+          : '';
+
         var content =
-          '<div class="mo-marker mo-cat-wrap" data-id="' + _escapeHtml(m.id || '') + '">' +
+          '<div class="mo-marker mo-cat-wrap" data-id="' + safeId + '"' + tapAttr + '>' +
             '<div class="mo-pin mo-cat-' + cat + '">' + icon + '</div>' +
             labelHtml +
           '</div>';
