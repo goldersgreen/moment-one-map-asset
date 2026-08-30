@@ -53,19 +53,18 @@
     .mo-cat-restaurant { background: #E07A2E; }
     .mo-cat-park       { background: #5BAD3F; }
     .mo-cat-default    { background: #6B7280; }
-    /* 산책 시작/종료 — 작은 발바닥 배지(시작 틸 / 종료 주황), 라벨 없음 */
-    .mo-pin.mo-cat-start,
-    .mo-pin.mo-cat-end { width: 22px; height: 22px; border-width: 2px;
-                         box-shadow: 0 1px 4px rgba(0,0,0,.3); }
-    .mo-cat-start      { background: #2BB6A3; font-size: 12px; }
-    .mo-cat-end        { background: #FF6B35; font-size: 8px; letter-spacing: -1px; }
+    /* 산책 시작/종료 — 압정 핀(SVG). 뾰족한 다리 끝이 좌표라 yAnchor=1.0.
+       원형 배지는 좌표 위에 정중앙으로 얹혀 사진 마커와 겹쳤다(2026-08-30 실기기).
+       .mo-marker 의 translateY(-2px) 를 쓰지 않는다 — 핀 끝은 정확해야 한다. */
+    .mo-pinwrap { line-height: 0; user-select: none;
+                  filter: drop-shadow(0 1px 3px rgba(0,0,0,.35)); }
 
     /* 산책 사진 핀 — 앱의 kWalkPhotoKindHex 와 색이 같아야 한다(양쪽 따로 적음) */
     .mo-pin.mo-cat-wp_marking,
     .mo-pin.mo-cat-wp_poop,
     .mo-pin.mo-cat-wp_cute,
-    .mo-pin.mo-cat-wp_etc { width: 26px; height: 26px; border-width: 2px;
-                            font-size: 13px; cursor: pointer; }
+    .mo-pin.mo-cat-wp_etc { width: 20px; height: 20px; border-width: 2px;
+                            font-size: 11px; cursor: pointer; }
     .mo-cat-wp_marking { background: #3B82C4; }
     .mo-cat-wp_poop    { background: #A0703C; }
     .mo-cat-wp_cute    { background: #E0568F; }
@@ -182,8 +181,8 @@
       cafe: '☕', grooming: '✂', hotel: '🏨', daycare: '🎒',
       hospital: '🏥', training: '🎓', shop: '🛍', restaurant: '🍽',
       park: '🌳',
-      // 산책 시작/종료 — 발바닥 1개(시작)/2개(종료)
-      start: '🐾', end: '🐾🐾',
+      // 산책 시작/종료는 _pinSvg() 가 그린다 — 아래 값은 쓰이지 않는다(호환용)
+      start: '', end: '',
       // 산책 중 사진 핀 (마킹·배변·이쁜 짓·기타)
       wp_marking: '💧', wp_poop: '🌿', wp_cute: '💗', wp_etc: '···'
     };
@@ -197,6 +196,23 @@
         }
       } catch (e) {}
     }
+    /* 산책 시작/종료 압정 핀 (발바닥 1개, 색으로 구분).
+       시작 = 오렌지 / 종료 = 녹색. 발바닥 모양은 둘이 같고 개수도 1개로 같다. */
+    var PIN_COLOR = { start: '#FF6B35', end: '#2E9E5B' };
+    function _pinSvg(cat) {
+      var c = PIN_COLOR[cat] || '#6B7280';
+      return '<svg class="mo-pinwrap" width="27" height="40" viewBox="-13.5 -40 27 40">' +
+        '<path d="M0 0 L-3.6 -15 L3.6 -15 Z" fill="' + c + '"/>' +
+        '<circle cy="-25" r="11.5" fill="' + c + '" stroke="#fff" stroke-width="2.5"/>' +
+        '<g fill="#fff" transform="translate(0 -25)">' +
+          '<ellipse cy="1.8" rx="3.4" ry="2.8"/>' +
+          '<circle cx="-5" cy="-3.6" r="1.7"/>' +
+          '<circle cx="-1.7" cy="-5.4" r="1.7"/>' +
+          '<circle cx="1.9" cy="-5.2" r="1.7"/>' +
+          '<circle cx="5.1" cy="-3.2" r="1.7"/>' +
+        '</g></svg>';
+    }
+
     function _escapeHtml(s) {
       return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
@@ -216,7 +232,8 @@
         var safeTitle = _escapeHtml(m.title || '매장');
         // 산책 시작/종료는 라벨 없이 발바닥 배지만(색·발바닥 개수로 구분)
         var isPhoto = cat.indexOf('wp_') === 0;
-        var isWalk = (cat === 'start' || cat === 'end' || isPhoto);
+        var isPin = (cat === 'start' || cat === 'end');
+        var isWalk = (isPin || isPhoto);
         var labelHtml = isWalk ? '' : '<div class="mo-label">' + safeTitle + '</div>';
 
         var safeId = _escapeHtml(m.id || '');
@@ -225,19 +242,23 @@
           ? ' onclick="_pinTap(&quot;' + safeId + '&quot;)"'
           : '';
 
+        var body = isPin
+          ? _pinSvg(cat)
+          : '<div class="mo-pin mo-cat-' + cat + '">' + icon + '</div>';
+
         var content =
           '<div class="mo-marker mo-cat-wrap" data-id="' + safeId + '"' + tapAttr + '>' +
-            '<div class="mo-pin mo-cat-' + cat + '">' + icon + '</div>' +
-            labelHtml +
+            body + labelHtml +
           '</div>';
 
         var overlay = new kakao.maps.CustomOverlay({
           position: new kakao.maps.LatLng(m.lat, m.lng),
           content: content,
-          // 매장: yAnchor=1.0 (핀 아래 끝=좌표, 라벨 아래로). 산책 배지: 0.5(점 정중앙).
-          yAnchor: isWalk ? 0.5 : 1.0,
+          // 매장·시작·종료: yAnchor=1.0 (아래 끝=좌표). 사진 원: 0.5(점 정중앙).
+          yAnchor: isPhoto ? 0.5 : 1.0,
           xAnchor: 0.5,
-          zIndex: 5
+          // 시작·종료가 사진 핀에 가려지지 않게 위로 올린다
+          zIndex: isPin ? 9 : 5
         });
         overlay.setMap(map);
         markers.push(overlay);
@@ -276,8 +297,19 @@
       for (var i = 0; i < path.length; i++) {
         bounds.extend(path[i]);
       }
-      // padding(px): 경로 끝점이 화면 가장자리에 딱 붙지 않도록 여백
-      map.setBounds(bounds, 30, 30, 30, 30);
+      // padding(px): 위쪽은 압정 핀이 좌표보다 40px 위로 솟으므로 더 준다.
+      map.setBounds(bounds, 46, 16, 20, 16);
+      // setBounds 는 레벨을 정수로만 맞춰 한 단계 넓게 잡는다 — 짧은 산책일수록
+      // 경로가 화면 한구석에 몰린다(0.4km 가 1km 범위로 보이던 문제).
+      // 한 단계 확대해도 경로가 다 들어가면 그대로 두고, 잘리면 되돌린다.
+      var lv = map.getLevel();
+      if (lv > 1) {
+        map.setLevel(lv - 1);
+        var b = map.getBounds();
+        if (!b || !b.contain(bounds.getSouthWest()) || !b.contain(bounds.getNorthEast())) {
+          map.setLevel(lv);
+        }
+      }
     }
     window.fitToPolyline = function() {
       // 지도(또는 경로)가 아직 준비 안 됐으면 큐잉 → 준비되면 _applyPolyline 이 적용.
