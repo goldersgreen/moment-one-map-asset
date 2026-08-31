@@ -199,18 +199,30 @@
     /* 산책 시작/종료 압정 핀 (발바닥 1개, 색으로 구분).
        시작 = 오렌지 / 종료 = 녹색. 발바닥 모양은 둘이 같고 개수도 1개로 같다. */
     var PIN_COLOR = { start: '#FF6B35', end: '#2E9E5B' };
+    // 발바닥 한 개 (머리에서 이 모양만큼 뚫어 지도가 비치게 한다)
+    var PAW =
+      '<ellipse cy="1.8" rx="3.4" ry="2.8"/>' +
+      '<circle cx="-5" cy="-3.6" r="1.7"/><circle cx="-1.7" cy="-5.4" r="1.7"/>' +
+      '<circle cx="1.9" cy="-5.2" r="1.7"/><circle cx="5.1" cy="-3.2" r="1.7"/>';
+
     function _pinSvg(cat) {
       var c = PIN_COLOR[cat] || '#6B7280';
-      return '<svg class="mo-pinwrap" width="27" height="40" viewBox="-13.5 -40 27 40">' +
-        '<path d="M0 0 L-3.6 -15 L3.6 -15 Z" fill="' + c + '"/>' +
-        '<circle cy="-25" r="11.5" fill="' + c + '" stroke="#fff" stroke-width="2.5"/>' +
-        '<g fill="#fff" transform="translate(0 -25)">' +
-          '<ellipse cy="1.8" rx="3.4" ry="2.8"/>' +
-          '<circle cx="-5" cy="-3.6" r="1.7"/>' +
-          '<circle cx="-1.7" cy="-5.4" r="1.7"/>' +
-          '<circle cx="1.9" cy="-5.2" r="1.7"/>' +
-          '<circle cx="5.1" cy="-3.2" r="1.7"/>' +
-        '</g></svg>';
+      // 종료 핀은 다리를 길게 — 왕복 산책이면 시작과 같은 좌표라 머리가 겹친다.
+      // 옆으로 밀지 않고 키만 키운다: 핀 끝(=좌표)은 그대로라 위치가 정확하다.
+      var isEnd = (cat === 'end');
+      var stem = isEnd ? 37 : 17;   // 다리 위쪽 끝
+      var cy   = isEnd ? 46 : 25;   // 머리 중심
+      var h    = isEnd ? 57 : 36;   // 전체 높이 (아래 끝 = 좌표)
+      var mid  = 'mo_ko_' + cat;    // 마스크 id 는 겹치면 안 된다
+      return '<svg class="mo-pinwrap" width="22" height="' + h + '" ' +
+             'viewBox="-11 -' + h + ' 22 ' + h + '">' +
+        '<defs><mask id="' + mid + '">' +
+          '<circle cy="-' + cy + '" r="9" fill="#fff"/>' +
+          '<g transform="translate(0 -' + cy + ') scale(0.82)" fill="#000">' + PAW + '</g>' +
+        '</mask></defs>' +
+        '<path d="M0 0 L-2.6 -' + stem + ' L2.6 -' + stem + ' Z" fill="' + c + '"/>' +
+        '<circle cy="-' + cy + '" r="9" fill="' + c + '" mask="url(#' + mid + ')"/>' +
+      '</svg>';
     }
 
     function _escapeHtml(s) {
