@@ -305,21 +305,6 @@
       map.panTo(new kakao.maps.LatLng(lat, lng));
     };
 
-    /// 경로 경계가 화면 안에 **주어진 여백을 두고** 들어오는지 픽셀로 확인.
-    /// 투영 API 를 못 쓰면 false 를 돌려 확대를 포기한다(잘리는 것보다 낫다).
-    function _boundsFitWithPadding(bounds, top, right, bottom, left) {
-      try {
-        var el = document.getElementById('map');
-        var proj = map.getProjection();
-        var sw = proj.containerPointFromCoords(bounds.getSouthWest());
-        var ne = proj.containerPointFromCoords(bounds.getNorthEast());
-        var w = el.offsetWidth, h = el.offsetHeight;
-        return ne.y >= top && sw.y <= h - bottom &&
-               sw.x >= left && ne.x <= w - right;
-      } catch (e) {
-        return false;
-      }
-    }
 
     // 현재 polyline 전체가 화면에 들어오도록 줌·중심 자동 조정 (긴 산책 경로 표시용)
     function _doFit() {
@@ -330,27 +315,25 @@
       for (var i = 0; i < path.length; i++) {
         bounds.extend(path[i]);
       }
-      // padding(px). ⚠️ **위 여백은 종료 핀 높이(43px)보다 커야 한다** —
-      // 종료 지점이 경로의 가장 북쪽일 때 핀이 위로 43px 솟기 때문이다.
-      // 38 로 줄였다가 머리가 잘렸다(2026-08-31 실기기) → 46 으로 되돌린다.
-      // 아래는 20→26 으로 숨통을 틔우고, 늘어난 세로만큼 좌우를 16→14 로
-      // 줄여 축소를 상쇄한다.
-      map.setBounds(bounds, 46, 14, 26, 14);
+      // padding(px): 위쪽은 핀이 좌표보다 솟으므로 더 준다.
+      map.setBounds(bounds, 46, 16, 20, 16);
       // setBounds 는 레벨을 정수로만 맞춰 한 단계 넓게 잡는다 — 짧은 산책일수록
-      // 경로가 화면 한구석에 몰린다. 한 단계 확대해 보고, **여백까지 지켜지는
-      // 경우에만** 그 확대를 유지한다.
+      // 경로가 화면 한구석에 몰린다(0.4km 가 1km 범위로 보이던 문제).
+      // 한 단계 확대해도 경로가 다 들어가면 그대로 두고, 잘리면 되돌린다.
       //
-      // ⚠️ 예전에는 "경로가 화면에 들어오는가" 만 봤다. 그러면 경로가 화면 끝에
-      //    딱 붙어도 통과해서, 좌표보다 위로 솟는 핀이 잘렸다(2026-08-31 실기기).
-      //    그래서 화면 픽셀 좌표로 바꿔 여백을 실제로 확인한다.
+      // ⚠️ 여기서는 **경로가 들어오는지만** 본다. 여백까지 지키게 했더니
+      //    확대가 거의 안 걸려 마커가 너무 작아졌다(2026-08-31 실기기).
+      //    드물게 핀 머리가 잘리는 편을 감수한다 — 대표 판단.
       var lv = map.getLevel();
       if (lv > 1) {
         map.setLevel(lv - 1);
-        if (!_boundsFitWithPadding(bounds, 46, 14, 26, 14)) {
-          map.setLevel(lv);   // 여백이 안 나오면 되돌린다
+        var b = map.getBounds();
+        if (!b || !b.contain(bounds.getSouthWest()) || !b.contain(bounds.getNorthEast())) {
+          map.setLevel(lv);
         }
       }
     }
+
     window.fitToPolyline = function() {
       // 지도(또는 경로)가 아직 준비 안 됐으면 큐잉 → 준비되면 _applyPolyline 이 적용.
       // (카카오맵은 onLoadStop 이후 비동기 생성 — 이 큐잉이 없으면 긴 경로 시작점이 잘림)
